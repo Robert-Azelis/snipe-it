@@ -45,11 +45,13 @@ View Assets for  {{ $user->present()->fullName() }}
               <thead>
               <tr>
                 <th>#</th>
-                <th class="col-md-3" data-switchable="true" data-visible="true">{{ trans('general.category') }}</th>
-                <th class="col-md-2" data-switchable="true" data-visible="true">{{ trans('admin/hardware/table.asset_tag') }}</th>
-                <th class="col-md-3" data-switchable="true" data-visible="true">{{ trans('general.name') }}</th>
-                <th class="col-md-4" data-switchable="true" data-visible="true">{{ trans('admin/hardware/table.asset_model') }}</th>
-                <th class="col-md-3" data-switchable="true" data-visible="true">{{ trans('admin/hardware/table.serial') }}</th>
+                <th class="col-md-2" data-switchable="true" data-visible="true">{{ trans('general.category') }}</th>
+                <th class="col-md-1" data-switchable="true" data-visible="true">{{ trans('admin/hardware/table.asset_tag') }}</th>
+                <th class="col-md-2" data-switchable="true" data-visible="true">{{ trans('general.name') }}</th>
+                <th class="col-md-3" data-switchable="true" data-visible="true">{{ trans('admin/hardware/table.asset_model') }}</th>
+                <th class="col-md-2" data-switchable="true" data-visible="true">{{ trans('admin/hardware/table.serial') }}</th>
+                <th class="col-md-1" data-switchable="true" data-visible="true">{{ trans('admin/hardware/form.date') }}</th>
+                <th class="col-md-1" data-switchable="true" data-visible="true">{{ trans('admin/hardware/form.eol_date') }}</th>
                 <th>{{ trans('general.image') }}</th>
               </tr>
 
@@ -66,10 +68,12 @@ View Assets for  {{ $user->present()->fullName() }}
                   <td>{{ $asset->name }}</td>
                   <td>
                     @if ($asset->physical=='1')
-                      {{ $asset->model->name }}
+                      {{ $asset->model->manufacturer->name }} {{ $asset->model->name }}
                     @endif
                   </td>
                   <td>{{ $asset->serial }}</td>
+                  <td>{{ \App\Helpers\Helper::getFormattedDateObject($asset->purchase_date, 'date', false) }}</td>	
+                  <td>{{ $asset->present()->eol_date() }}</td>                  
                   <td>
                     @if (($asset->image) && ($asset->image!=''))
                       <img src="{{ Storage::disk('public')->url(app('assets_upload_path').e($asset->image)) }}" height="50" width="50">
@@ -91,10 +95,12 @@ View Assets for  {{ $user->present()->fullName() }}
                       <td>{{ $asset->name }}</td>
                       <td>
                         @if ($asset->physical=='1')
-                          {{ $asset->model->name }}
+                          {{ $asset->model->manufacturer->name }} {{ $asset->model->name }}
                         @endif
                       </td>
                       <td>{{ $asset->serial }}</td>
+					            <td>{{ \App\Helpers\Helper::getFormattedDateObject($asset->purchase_date, 'date', false) }}</td>	
+					            <td>{{ $asset->present()->eol_date() }}</td>	                      
                       <td>
                         @if (($asset->image) && ($asset->image!=''))
                           <img src="{{ Storage::disk('public')->url(app('assets_upload_path').e($asset->image)) }}" height="50" width="50">
