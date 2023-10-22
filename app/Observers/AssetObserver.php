@@ -6,6 +6,7 @@ use App\Models\Actionlog;
 use App\Models\Asset;
 use App\Models\Setting;
 use Auth;
+use Carbon\Carbon;
 
 class AssetObserver
 {
@@ -74,9 +75,9 @@ class AssetObserver
             $tag = $asset->asset_tag;
             $prefix = $settings->auto_increment_prefix;
             $number = substr($tag, strlen($prefix));
-            // IF - auto_increment_assets is on, AND (the prefix matches the start of the tag OR there is no prefix)
+            // IF - auto_increment_assets is on, AND (there is no prefix OR the prefix matches the start of the tag)
             //      AND the rest of the string after the prefix is all digits, THEN...
-            if ($settings->auto_increment_assets && (strpos($tag, $prefix) === 0 || $prefix=='') && preg_match('/\d+/',$number) === 1) {
+            if ($settings->auto_increment_assets && ($prefix=='' || strpos($tag, $prefix) === 0) && preg_match('/\d+/',$number) === 1) {
                 // new way of auto-trueing-up auto_increment ID's
                 $next_asset_tag = intval($number, 10) + 1;
                 // we had to use 'intval' because the $number could be '01234' and
@@ -118,5 +119,43 @@ class AssetObserver
         $logAction->created_at = date('Y-m-d H:i:s');
         $logAction->user_id = Auth::id();
         $logAction->logaction('delete');
+    }
+
+    /**
+     * Executes every time an asset is saved.
+     *
+     * This matters specifically because any database fields affected here MUST already exist on
+     * the assets table (and/or any related models), or related migrations WILL fail.
+     *
+     * For example, if there is a database migration that's a bit older and modifies an asset, if the save
+     * fires before a field gets created in a later migration and that field in the later migration
+     * is used in this observer, it doesn't actually exist yet and the migration will break unless we
+     * use saveQuietly() in the migration which skips this observer.
+     *
+     * @see https://github.com/snipe/snipe-it/issues/13723#issuecomment-1761315938
+     */
+    public function saving(Asset $asset)
+    {
+        // determine if calculated eol and then calculate it - this should only happen on a new asset
+        if (is_null($asset->asset_eol_date) && !is_null($asset->purchase_date) && !is_null($asset->model->eol)){
+            $asset->asset_eol_date = $asset->purchase_date->addMonths($asset->model->eol)->format('Y-m-d');
+            $asset->eol_explicit = false; 
+        } 
+
+       // determine if explicit and set eol_explicit to true
+       if (!is_null($asset->asset_eol_date) && !is_null($asset->purchase_date)) {
+            if($asset->model->eol) {
+                $months = Carbon::parse($asset->asset_eol_date)->diffInMonths($asset->purchase_date); 
+                if($months != $asset->model->eol) {
+                    $asset->eol_explicit = true;
+                }
+            }
+       } elseif (!is_null($asset->asset_eol_date) && is_null($asset->purchase_date)) {
+           $asset->eol_explicit = true;
+       }
+       if ((!is_null($asset->asset_eol_date)) && (!is_null($asset->purchase_date)) && (is_null($asset->model->eol))) {
+           $asset->eol_explicit = true;
+       }
+
     }
 }

@@ -295,7 +295,7 @@ class AssetsController extends Controller
         }
 
         if ($request->filled('order_number')) {
-            $assets->where('assets.order_number', '=', $request->get('order_number'));
+            $assets->where('assets.order_number', '=', strval($request->get('order_number')));
         }
 
         // This is kinda gross, but we need to do this because the Bootstrap Tables
@@ -346,7 +346,7 @@ class AssetsController extends Controller
 
 
         // Make sure the offset and limit are actually integers and do not exceed system limits
-        $offset = ($request->input('offset') > $assets->count()) ? $assets->count() : abs($request->input('offset'));
+        $offset = ($request->input('offset') > $assets->count()) ? $assets->count() : app('api_offset_value');
         $limit = app('api_limit_value');
 
         $total = $assets->count();
@@ -530,7 +530,6 @@ class AssetsController extends Controller
      * @author [A. Gianotto] [<snipe@snipe.net>]
      * @param \App\Http\Requests\ImageUploadRequest $request
      * @since [v4.0]
-     * @return JsonResponse
      */
     public function store(ImageUploadRequest $request)
     {
@@ -905,6 +904,7 @@ class AssetsController extends Controller
 
         $asset->expected_checkin = null;
         $asset->last_checkout = null;
+        $asset->last_checkin = now();
         $asset->assigned_to = null;
         $asset->assignedTo()->disassociate($asset);
         $asset->accepted = null;
@@ -924,10 +924,14 @@ class AssetsController extends Controller
         }
         
         $checkin_at = $request->filled('checkin_at') ? $request->input('checkin_at').' '. date('H:i:s') : date('Y-m-d H:i:s');
+        $originalValues = $asset->getRawOriginal();
 
+        if (($request->filled('checkin_at')) && ($request->get('checkin_at') != date('Y-m-d'))) {
+            $originalValues['action_date'] = $checkin_at;
+        }
 
         if ($asset->save()) {
-            event(new CheckoutableCheckedIn($asset, $target, Auth::user(), $request->input('note'), $checkin_at));
+            event(new CheckoutableCheckedIn($asset, $target, Auth::user(), $request->input('note'), $checkin_at, $originalValues));
 
             return response()->json(Helper::formatStandardApiResponse('success', ['asset'=> e($asset->asset_tag)], trans('admin/hardware/message.checkin.success')));
         }

@@ -23,6 +23,7 @@ use Input;
 use League\Csv\Reader;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use League\Csv\EscapeFormula;
+use App\Http\Requests\CustomAssetReportRequest;
 
 
 /**
@@ -403,10 +404,11 @@ class ReportsController extends Controller
      * @since [v1.0]
      * @return \Illuminate\Http\Response
      */
-    public function postCustom(Request $request)
+    public function postCustom(CustomAssetReportRequest $request)
     {
         ini_set('max_execution_time', env('REPORT_TIME_LIMIT', 12000)); //12000 seconds = 200 minutes
         $this->authorize('reports.view');
+
 
         \Debugbar::disable();
         $customfields = CustomField::get();
@@ -545,6 +547,10 @@ class ReportsController extends Controller
                 $header[] = trans('admin/hardware/table.checkout_date');
             }
 
+            if ($request->filled('checkin_date')) {
+                $header[] = trans('admin/hardware/table.last_checkin_date');
+            }
+
             if ($request->filled('expected_checkin')) {
                 $header[] = trans('admin/hardware/form.expected_checkin');
             }
@@ -641,7 +647,7 @@ class ReportsController extends Controller
             if (($request->filled('created_start')) && ($request->filled('created_end'))) {
                 $created_start = \Carbon::parse($request->input('created_start'))->startOfDay();
                 $created_end = \Carbon::parse($request->input('created_end'))->endOfDay();
-                
+
                 $assets->whereBetween('assets.created_at', [$created_start, $created_end]);
             }
             if (($request->filled('checkout_date_start')) && ($request->filled('checkout_date_end'))) {
@@ -651,15 +657,23 @@ class ReportsController extends Controller
                 $assets->whereBetween('assets.last_checkout', [$checkout_start, $checkout_end]);
             }
 
+            if (($request->filled('checkin_date_start'))) {
+                    $assets->whereBetween('last_checkin', [
+                        Carbon::parse($request->input('checkin_date_start'))->startOfDay(),
+                        // use today's date is `checkin_date_end` is not provided
+                        Carbon::parse($request->input('checkin_date_end', now()))->endOfDay(),
+                    ]);
+            }
+
             if (($request->filled('expected_checkin_start')) && ($request->filled('expected_checkin_end'))) {
-                $assets->whereBetween('assets.expected_checkin', [$request->input('expected_checkin_start'), $request->input('expected_checkin_end')]);
+                    $assets->whereBetween('assets.expected_checkin', [$request->input('expected_checkin_start'), $request->input('expected_checkin_end')]);
             }
 
             if (($request->filled('last_audit_start')) && ($request->filled('last_audit_end'))) {
-                $last_audit_start = \Carbon::parse($request->input('last_audit_start'))->startOfDay();
-                $last_audit_end = \Carbon::parse($request->input('last_audit_end'))->endOfDay();
+                    $last_audit_start = \Carbon::parse($request->input('last_audit_start'))->startOfDay();
+                    $last_audit_end = \Carbon::parse($request->input('last_audit_end'))->endOfDay();
 
-                $assets->whereBetween('assets.last_audit_date', [$last_audit_start, $last_audit_end]);
+                    $assets->whereBetween('assets.last_audit_date', [$last_audit_start, $last_audit_end]);
             }
 
             if (($request->filled('next_audit_start')) && ($request->filled('next_audit_end'))) {
@@ -835,6 +849,12 @@ class ReportsController extends Controller
                         $row[] = ($asset->last_checkout) ? $asset->last_checkout : '';
                     }
 
+                    if ($request->filled('checkin_date')) {
+                        $row[] = ($asset->last_checkin)
+                            ? Carbon::parse($asset->last_checkin)->format('Y-m-d')
+                            : '';
+                    }
+
                     if ($request->filled('expected_checkin')) {
                         $row[] = ($asset->expected_checkin) ? $asset->expected_checkin : '';
                     }
@@ -1003,7 +1023,12 @@ class ReportsController extends Controller
 
         $assetsForReport = $acceptances
             ->filter(function ($acceptance) {
-                return $acceptance->checkoutable_type == 'App\Models\Asset';
+                $acceptance_checkoutable_flag = false;
+                if ($acceptance->checkoutable){
+                    $acceptance_checkoutable_flag = $acceptance->checkoutable->checkedOutToUser();
+                }
+                
+                return $acceptance->checkoutable_type == 'App\Models\Asset' && $acceptance_checkoutable_flag;
             })
             ->map(function($acceptance) {
                 return ['assetItem' => $acceptance->checkoutable, 'acceptance' => $acceptance];
@@ -1020,27 +1045,34 @@ class ReportsController extends Controller
      * @throws \Illuminate\Auth\Access\AuthorizationException
      * @version v1.0
      */
-    public function sentAssetAcceptanceReminder($acceptanceId = null)
+    public function sentAssetAcceptanceReminder(Request $request)
     {
         $this->authorize('reports.view');
 
-        if (!$acceptance = CheckoutAcceptance::pending()->find($acceptanceId)) {
+        if (!$acceptance = CheckoutAcceptance::pending()->find($request->input('acceptance_id'))) {
+            \Log::debug('No pending acceptances');
             // Redirect to the unaccepted assets report page with error
             return redirect()->route('reports/unaccepted_assets')->with('error', trans('general.bad_data'));
         }
+
         $assetItem = $acceptance->checkoutable;
 
+        \Log::debug(print_r($assetItem, true));
+
         if (is_null($acceptance->created_at)){
+            \Log::debug('No acceptance created_at');
             return redirect()->route('reports/unaccepted_assets')->with('error', trans('general.bad_data'));
         } else {
             $logItem_res = $assetItem->checkouts()->where('created_at', '=', $acceptance->created_at)->get();
+
             if ($logItem_res->isEmpty()){
+                \Log::debug('Acceptance date mismatch');
                 return redirect()->route('reports/unaccepted_assets')->with('error', trans('general.bad_data'));
             }
             $logItem = $logItem_res[0];
         }
 
-        if(!$assetItem->assignedTo->locale){
+        if (!$assetItem->assignedTo->locale){
             Notification::locale(Setting::getSettings()->locale)->send(
                 $assetItem->assignedTo,
                 new CheckoutAssetNotification($assetItem, $assetItem->assignedTo, $logItem->user, $acceptance, $logItem->note)
