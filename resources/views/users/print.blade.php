@@ -82,6 +82,10 @@
 @foreach ($users as $show_user)
     <div id="start_of_user_section"> {{-- used for page breaks when printing --}}</div>
     <h3>
+		@if ($show_user->company)
+			<b>{{ trans('admin/companies/table.name') }}:</b> {{ $show_user->company->name }}</b>
+		<br>
+		@endif        
         {{ trans('general.assigned_to', ['name' => $show_user->present()->fullName()]) }}
         {{ ($show_user->employee_num!='') ? ' (#'.$show_user->employee_num.') ' : '' }}
         {{ ($show_user->jobtitle!='' ? ' - '.$show_user->jobtitle : '') }}
