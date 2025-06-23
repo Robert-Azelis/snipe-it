@@ -332,7 +332,7 @@ class AssetsController extends Controller
 
         if (($request->filled('assigned_to')) && ($request->filled('assigned_type'))) {
             $assets->where('assets.assigned_to', '=', $request->input('assigned_to'))
-                ->where('assets.assigned_type', '=', $request->input('assigned_type'));
+                ->where('assets.assigned_type', '=', 'App\\Models\\'.ucwords($request->input('assigned_type')));
         }
 
         if ($request->filled('company_id')) {
